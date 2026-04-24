@@ -1,0 +1,66 @@
+# robot_localization EKF — fuses open-loop odometry with GPS
+# Install: sudo apt install ros-humble-robot-localization
+#
+# Two nodes run together:
+#   ekf_filter_node      — local filter (odom frame), fuses /odom + converted GPS
+#   navsat_transform_node — converts /gps/fix lat/lon → odom-frame Odometry
+#
+# GPS accuracy ~3-5 m is fine; large robot can afford coarse positioning.
+
+ekf_filter_node:
+  ros__parameters:
+    frequency:      30.0
+    sensor_timeout: 0.1
+    two_d_mode:     true        # robot is planar; ignore z/roll/pitch
+    print_diagnostics: false
+    debug: false
+
+    map_frame:       map
+    odom_frame:      odom
+    base_link_frame: base_link
+    world_frame:     odom       # local filter → output in odom frame
+
+    # ── Source 0: open-loop (or future encoder) odometry ─────────────────────
+    odom0: /odom
+    # x  y  z  roll pitch yaw  vx vy vz  vroll vpitch vyaw  ax ay az
+    odom0_config: [true,  true,  false,
+                   false, false, true,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative:     false
+    odom0_queue_size:   10
+
+    # ── Source 1: GPS converted to odom frame by navsat_transform_node ────────
+    odom1: /odometry/gps
+    # x  y  z  roll pitch yaw  vx vy vz  vroll vpitch vyaw  ax ay az
+    odom1_config: [true,  true,  false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    odom1_differential: false
+    odom1_relative:     false
+    odom1_queue_size:   10
+
+
+navsat_transform_node:
+  ros__parameters:
+    frequency:  10.0
+    delay:       3.0    # seconds — wait for EKF to warm up before accepting GPS
+
+    magnetic_declination_radians: 0.0
+    yaw_offset:   0.0
+    zero_altitude: true
+
+    broadcast_utm_transform:                false
+    broadcast_utm_transform_as_parent_frame: false
+    publish_filtered_gps:                   true
+    use_odometry_yaw:                       false
+    wait_for_datum:                         false
+
+    # Topics consumed by this node
+    # gps_topic is fixed as /gps/fix by the node itself (remap if needed)
+    # imu_topic: /imu/data   # uncomment if an IMU is added later
+    odometry_topic: /odometry/filtered   # EKF output fed back in
